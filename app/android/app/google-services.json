@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "671002576425",
+    "project_id": "e-box-4fbf2",
+    "storage_bucket": "e-box-4fbf2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671002576425:android:7a3354df63980e98a2fe38",
+        "android_client_info": {
+          "package_name": "com.example.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBz8sH5SwmsDj3J-Mc5E72gkJFtv2_RQgY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
