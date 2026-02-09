@@ -2,9 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:math';
-import 'package:intl/intl.dart';
+import '/services/description_queue_service.dart';
 
 // Make sure you have your HistoryScreen file imported or defined
 import 'history_screen.dart'; 
@@ -376,6 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- NEW OFFLINE PIN LOGIC (FETCH & POP) ---
   void _showOfflinePinDialog(BuildContext context, String boxId) {
+    final descriptionCtrl = TextEditingController();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -412,6 +411,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   
                   setDialogState(() { fetchedPin = nextPin; });
                 });
+                
+                // Add description to queue if provided
+                if (descriptionCtrl.text.trim().isNotEmpty) {
+                  try {
+                    await DescriptionQueueService.addDescriptionToQueue(
+                        boxId, descriptionCtrl.text.trim(),
+                        code: fetchedPin);
+                  } catch (e) {
+                    // Log but don't fail the process
+                    print("Warning: Failed to add description to queue: $e");
+                  }
+                }
               } catch (e) {
                 setDialogState(() { errorMsg = e.toString().replaceAll("Exception:", ""); });
               } finally {
@@ -421,26 +432,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return AlertDialog(
               title: const Text("Offline Access Code"),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (fetchedPin == null && !loading && errorMsg == null)
-                    const Text("Generate a one-time PIN? This will remove it from the database."),
-                  
-                  if (loading)
-                    const CircularProgressIndicator(),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (fetchedPin == null && !loading && errorMsg == null) ...[
+                      const Text("Generate a one-time PIN? This will remove it from the database."),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: descriptionCtrl,
+                        maxLines: 2,
+                        minLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Description (Optional)',
+                          hintText: 'Why are you unlocking offline?',
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                    ],
+                    
+                    if (loading)
+                      const CircularProgressIndicator(),
 
-                  if (errorMsg != null)
-                    Text(errorMsg!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                    if (errorMsg != null)
+                      Text(errorMsg!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
 
-                  if (fetchedPin != null) ...[
-                    const Text("Enter this on Keypad:", style: TextStyle(color: Colors.grey)),
-                    const SizedBox(height: 10),
-                    Text(fetchedPin!, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: 4, color: Colors.blue)),
-                    const SizedBox(height: 10),
-                    const Text("Valid once. Previous unused codes will be invalidated by the device.", style: TextStyle(fontSize: 12, color: Colors.orange), textAlign: TextAlign.center),
-                  ]
-                ],
+                    if (fetchedPin != null) ...[
+                      const Text("Enter this on Keypad:", style: TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 10),
+                      Text(fetchedPin!, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: 4, color: Colors.blue)),
+                      const SizedBox(height: 10),
+                      const Text("Valid once. Previous unused codes will be invalidated by the device.", style: TextStyle(fontSize: 12, color: Colors.orange), textAlign: TextAlign.center),
+                      if (descriptionCtrl.text.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  "Description saved: \"${descriptionCtrl.text.trim()}\"",
+                                  style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ]
+                  ],
+                ),
               ),
               actions: [
                 if (fetchedPin == null && !loading)
@@ -551,6 +599,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showPinVerifyPopup(BuildContext context, String internalId, bool currentLockState) {
     final pinCtrl = TextEditingController();
+    final descriptionCtrl = TextEditingController();
     String? errorMsg;
     bool loading = false;
 
@@ -560,12 +609,40 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(builder: (context, setState) {
           return AlertDialog(
             title: Text(currentLockState ? 'Unlock' : 'Lock'),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-               if (errorMsg != null) Text(errorMsg!, style: const TextStyle(color: Colors.red)),
-               TextField(controller: pinCtrl, obscureText: true, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'PIN')),
-            ]),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (errorMsg != null) Text(errorMsg!, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: pinCtrl,
+                    obscureText: true,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'PIN',
+                      hintText: 'Enter your PIN',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: descriptionCtrl,
+                    maxLines: 3,
+                    minLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Description (Optional)',
+                      hintText: 'What is the reason for this action?',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
                 onPressed: loading ? null : () async {
                   setState(() => loading = true);
@@ -575,13 +652,39 @@ class _HomeScreenState extends State<HomeScreen> {
                     final data = boxSnap.data();
                     final storedPin = (data != null && data.containsKey('pinHash')) ? data['pinHash'] : null;
                     
-                    if (pinCtrl.text.trim() != storedPin) { setState(() { loading = false; errorMsg = "Wrong PIN"; }); return; }
+                    if (pinCtrl.text.trim() != storedPin) {
+                      setState(() {
+                        loading = false;
+                        errorMsg = "Wrong PIN";
+                      });
+                      return;
+                    }
 
                     final newStatus = !currentLockState;
-                    await boxRef.update({'isLocked': newStatus, 'command': newStatus ? 'LOCK' : 'UNLOCK'});
-                    await boxRef.collection('history').add({'action': newStatus ? 'CLOSE' : 'OPEN', 'timestamp': FieldValue.serverTimestamp(), 'userId': FirebaseAuth.instance.currentUser!.uid});
+                    await boxRef.update({
+                      'isLocked': newStatus,
+                      'command': newStatus ? 'LOCK' : 'UNLOCK'
+                    });
+                    
+                    // Save to history with description
+                    await boxRef.collection('history').add({
+                      'action': newStatus ? 'CLOSE' : 'OPEN',
+                      'timestamp': FieldValue.serverTimestamp(),
+                      'userId': FirebaseAuth.instance.currentUser!.uid,
+                      'description': descriptionCtrl.text.trim().isEmpty 
+                          ? 'No description provided'
+                          : descriptionCtrl.text.trim(),
+                      'codeUsed': 'Master Code',
+                      'synced': false,
+                    });
+                    
                     if (context.mounted) Navigator.pop(dialogContext);
-                  } catch (e) { setState(() { loading = false; errorMsg = "$e"; }); }
+                  } catch (e) {
+                    setState(() {
+                      loading = false;
+                      errorMsg = "$e";
+                    });
+                  }
                 },
                 child: const Text('Confirm'),
               ),

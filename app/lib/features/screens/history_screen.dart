@@ -6,9 +6,56 @@ import 'package:intl/intl.dart';
 import 'models/event_details_model.dart';
 import 'widgets/history_card.dart';
 import 'widgets/event_details_sheet.dart';
+import '/services/event_description_link_service.dart';
 
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Start listening for unsynced offline unlocks and auto-link descriptions
+    _startAutoLinkingDescriptions();
+  }
+
+  void _startAutoLinkingDescriptions() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Get the user's box and listen for unsynced events
+    FirebaseFirestore.instance
+        .collection('boxes')
+        .where('assignedTo', isEqualTo: user.uid)
+        .limit(1)
+        .snapshots()
+        .listen((boxSnap) {
+      if (boxSnap.docs.isEmpty) return;
+
+      final boxId = boxSnap.docs.first.id;
+      
+      // Listen for unsynced OFFLINE_UNLOCK events and auto-link
+      FirebaseFirestore.instance
+          .collection('boxes')
+          .doc(boxId)
+          .collection('history')
+          .where('action', isEqualTo: 'OFFLINE_UNLOCK')
+          .where('synced', isEqualTo: false)
+          .snapshots()
+          .listen((historySnap) {
+        if (historySnap.docs.isNotEmpty) {
+          // Auto-link descriptions when unsynced offline unlocks appear
+          EventDescriptionLinkService.linkPendingDescriptionToLastOfflineUnlock(boxId)
+              .then((_) => print('[History] Description auto-linked'))
+              .catchError((e) => print('[History] Auto-link error: $e'));
+        }
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
